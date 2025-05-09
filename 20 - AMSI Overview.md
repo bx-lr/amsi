@@ -290,7 +290,7 @@ The following shellcode will take the provided pointer to AMSI and modify the IA
 071A001B | 90                       | nop                                     |
 ```
 
-This shellcode can be executed by the code listed below. More details are at [["30 - Win32 CallBack Functions.md"]].
+This shellcode can be executed by the code listed below. More details can be found under callback functions.
 
 ```powershell
 function Update-EnumPropsExA{
